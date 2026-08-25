@@ -40,7 +40,7 @@ export function PlaceSearch(p: Props) {
       catch { /* aborted or offline: keep the old list */ }
       finally { if (!ctrl.signal.aborted) setBusy(false); }
     }, 280);
-    return () => { clearTimeout(t); ctrl.abort(); };
+    return () => { clearTimeout(t); ctrl.abort(); setBusy(false); };
   }, [text, editing, p.near]);
 
   const pick = (pl: Place) => { setEditing(false); setResults([]); setText(pl.name); p.onPick(pl); };
@@ -63,9 +63,10 @@ export function PlaceSearch(p: Props) {
         aria-expanded={editing && results.length > 0}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-activedescendant={editing && results.length > 0 && active >= 0 ? `${listId}-${active}` : undefined}
         onFocus={e => { setEditing(true); e.target.select(); }}
         onBlur={() => setTimeout(() => { setEditing(false); setResults([]); }, 150)}
-        onChange={e => setText(e.target.value)}
+        onChange={e => { setEditing(true); setText(e.target.value); }}
         onKeyDown={onKey}
       />
       {busy ? <span className="muted" style={{ fontSize: 11 }}>…</span> : null}
@@ -74,7 +75,7 @@ export function PlaceSearch(p: Props) {
       {editing && results.length > 0 ? (
         <div className="suggest" id={listId} role="listbox">
           {results.map((r, i) => (
-            <button key={`${r.lngLat[0]},${r.lngLat[1]}`} role="option" aria-selected={i === active} onMouseDown={e => e.preventDefault()} onClick={() => pick(r)}>
+            <button key={`${r.lngLat[0]},${r.lngLat[1]}`} id={`${listId}-${i}`} role="option" tabIndex={-1} aria-selected={i === active} onMouseDown={e => e.preventDefault()} onClick={() => pick(r)}>
               <div className="suggest__name">{r.name}</div>
               {r.detail ? <div className="suggest__detail">{r.detail}</div> : null}
             </button>

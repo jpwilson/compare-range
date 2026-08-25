@@ -1,5 +1,5 @@
 import type { LngLat } from '../geo/geodesy';
-import { geodesicAnnulus, geodesicCircleOutline, greatCirclePoints } from '../geo/geodesy';
+import { geodesicAnnulus, geodesicCircleOutline, greatCirclePoints, unwrapLongitudes } from '../geo/geodesy';
 
 export interface RingSpec {
   id: string;
@@ -46,7 +46,7 @@ export const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', fea
 /** Bounds that contain the largest ring — or null when the ring is bigger than a hemisphere (show the globe). */
 export function ringBounds(origin: LngLat, rings: RingSpec[], extra: LngLat[] = []): [[number, number], [number, number]] | null {
   const maxKm = rings.reduce((m, r) => Math.max(m, r.rangeKm), 0);
-  const pts = [origin, ...extra];
+  const pts = unwrapLongitudes([origin, ...extra]); // keep the destination on the short side of the antimeridian
   if (maxKm > 0) {
     if (maxKm >= 10000) return null;
     const outline = geodesicCircleOutline(origin, maxKm, 72);

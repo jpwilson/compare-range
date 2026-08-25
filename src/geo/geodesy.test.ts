@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import earcut from 'earcut';
 import { antipode, geodesicCircleOutline, destinationPoint, geodesicAnnulus, geodesicCircleRings, greatCirclePoints, haversineKm, normalizeLon, unwrapLongitudes, type LngLat } from './geodesy';
 
 const PHX: LngLat = [-112.07, 33.45];
@@ -91,8 +92,13 @@ describe('geodesicCircleRings', () => {
       expect(mismatches).toBe(0);
     });
   }
-  it('keeps longitudes within what MapLibre wraps (±540)', () => {
-    for (const [, c, r] of cases) for (const ring of geodesicCircleRings(c, r)) for (const [lon] of ring) expect(Math.abs(lon)).toBeLessThanOrEqual(540);
+  it('keeps longitudes within what the MapLibre globe renders correctly (±360)', () => {
+    for (const [, c, r] of cases) for (const ring of geodesicCircleRings(c, r)) for (const [lon] of ring) expect(Math.abs(lon)).toBeLessThanOrEqual(360);
+    for (const c of [[-21.58, 24.08], [69, 0], [-69, 0], [179, 45], [-179, -45], [0, 0]] as LngLat[]) for (const r of [500, 9000, 12000, 14800, 16500]) {
+      const g = geodesicAnnulus(c, r, r * 0.4, 90);
+      const rings = g.type === 'Polygon' ? g.coordinates as LngLat[][] : (g.coordinates as LngLat[][][]).flat();
+      for (const ring of rings) for (const [lon] of ring) expect(Math.abs(lon)).toBeLessThanOrEqual(360);
+    }
   });
   it('outer ring is counter-clockwise, holes clockwise', () => {
     const rings = geodesicCircleRings(PHX, 14800);
@@ -104,8 +110,61 @@ describe('geodesicCircleRings', () => {
   it('antipode', () => { expect(antipode([10, 20])).toEqual([-170, -20]); });
 });
 
+// Planar point-in-ring (no ±360 retries) — what geojson-vt/earcut actually see.
+function inRingPlanar(ring: LngLat[], [x, y]: LngLat): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 describe('geodesicAnnulus', () => {
-  const bands: Array<[LngLat, number, number]> = [[PHX, 1000, 500], [[175, -20], 3000, 1500], [PHX, 14800, 13890], [[10, 70], 12000, 3000], [PHX, 16000, 10500]];
+  const bands: Array<[LngLat, number, number]> = [[PHX, 1000, 500], [[175, -20], 3000, 1500], [PHX, 14800, 13890], [[10, 70], 12000, 3000], [PHX, 16000, 10500], [PHX, 13890, 2360], [PHX, 14815, 9000], [SYD, 7000, 2000], [[0, 0], 12000, 3000], [[-179.5, 10], 14000, 700], [[120, -75], 9000, 1200]];
+  for (const [c, outer, inner] of bands) {
+    it(`band ${inner}–${outer} km around ${c.join(',')}: every hole sits inside its outer ring in one frame`, () => {
+      const g = geodesicAnnulus(c, outer, inner, 120);
+      const rings = g.type === 'Polygon' ? g.coordinates as LngLat[][] : (g.coordinates as LngLat[][][]).flat();
+      const outerRing = rings[0];
+      const lons = outerRing.map(p => p[0]), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+      const onBoundary = ([lon, lat]: LngLat) => Math.abs(lon - minLon) < 1e-6 || Math.abs(lon - maxLon) < 1e-6 || Math.abs(Math.abs(lat) - 90) < 1e-6;
+      for (const hole of rings.slice(1)) {
+        expect(Math.min(...hole.map(p => p[0]))).toBeGreaterThanOrEqual(minLon - 1e-6);
+        expect(Math.max(...hole.map(p => p[0]))).toBeLessThanOrEqual(maxLon + 1e-6);
+        for (const v of hole) if (!onBoundary(v)) expect(inRingPlanar(outerRing, v)).toBe(true);
+      }
+    });
+    it(`band ${inner}–${outer} km around ${c.join(',')}: triangulation never covers the inner disc`, () => {
+      // Triangulate like MapLibre's fill bucket (earcut with holes) and check the inner region stays unpainted.
+      const g = geodesicAnnulus(c, outer, inner, 120);
+      const rings = g.type === 'Polygon' ? g.coordinates as LngLat[][] : (g.coordinates as LngLat[][][]).flat();
+      const flat: number[] = [], holeIdx: number[] = [];
+      for (const ring of rings) { if (flat.length) holeIdx.push(flat.length / 2); for (const [x, y] of ring) flat.push(x, y); }
+      const tri = earcut(flat, holeIdx, 2);
+      const outerLons = rings[0].map(p => p[0]), minLon = Math.min(...outerLons), maxLon = Math.max(...outerLons);
+      const covered = ([px, py]: LngLat) => {
+        for (let i = 0; i < tri.length; i += 3) {
+          const ax = flat[tri[i] * 2], ay = flat[tri[i] * 2 + 1], bx = flat[tri[i + 1] * 2], by = flat[tri[i + 1] * 2 + 1], cx = flat[tri[i + 2] * 2], cy = flat[tri[i + 2] * 2 + 1];
+          const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by), d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy), d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+          if (!((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) return true;
+        }
+        return false;
+      };
+      let bad = 0, total = 0;
+      const inside: LngLat[] = [];
+      for (let f = 0.1; f < 0.9; f += 0.15) for (let b = 0; b < 360; b += 30) inside.push(destinationPoint(c, inner * f, b));
+      for (const p of inside) {
+        if (Math.abs(p[1]) > 85) continue; // Mercator clamps beyond this anyway
+        total++;
+        // test the point in every world copy the polygon might occupy
+        const shifts = [-720, -360, 0, 360, 720].map(k => [p[0] + k, p[1]] as LngLat).filter(q => q[0] >= minLon - 1 && q[0] <= maxLon + 1);
+        if (shifts.some(covered)) bad++;
+      }
+      expect(total).toBeGreaterThan(20);
+      expect(bad).toBe(0);
+    });
+  }
   for (const [c, outer, inner] of bands) {
     it(`band ${inner}–${outer} km around ${c.join(',')} matches haversine`, () => {
       const g = geodesicAnnulus(c, outer, inner, 360);

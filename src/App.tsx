@@ -29,28 +29,40 @@ function useIsMobile() {
 
 /** 0→1 ease-out that restarts whenever `key` changes — drives the ring "grow" animation. */
 function useReveal(key: string): number {
-  const [t, setT] = useState(1);
+  const [anim, setAnim] = useState({ key, t: 1 });
   const first = useRef(true);
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setT(1); return; }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setAnim({ key, t: 1 }); return; }
     const start = performance.now(), dur = first.current ? 1100 : 650;
     first.current = false;
     let raf = 0;
     const tick = (now: number) => {
       const x = Math.min(1, (now - start) / dur);
-      setT(1 - Math.pow(1 - x, 3));
+      setAnim({ key, t: 1 - Math.pow(1 - x, 3) });
       if (x < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [key]);
-  return t;
+  // On the render where the key changes, start from 0 instead of flashing the previous (finished) value.
+  return anim.key === key ? anim.t : 0;
+}
+
+function useViewportHeight(): number {
+  const [h, setH] = useState(() => window.innerHeight);
+  useEffect(() => {
+    const on = () => setH(window.innerHeight);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return h;
 }
 
 /** Reverse-geocode a point into a label, cancelling stale lookups. */
 function useLabel(point: LngLat | null, current: string, set: (label: string) => void) {
   useEffect(() => {
-    if (!point || current) return;
+    // A label equal to the coordinate placeholder means "not resolved yet" (e.g. after a swap mid-lookup).
+    if (!point || (current && current !== formatLngLat(point))) return;
     const ctrl = new AbortController();
     set(formatLngLat(point));
     reverseGeocode(point, ctrl.signal).then(l => { if (!ctrl.signal.aborted) set(l); }).catch(() => {});
@@ -62,6 +74,7 @@ function useLabel(point: LngLat | null, current: string, set: (label: string) =>
 export function App() {
   const { state, dispatch, selectedSet, toggle } = useAppState();
   const isMobile = useIsMobile();
+  const viewportH = useViewportHeight();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [styleId, setStyleId] = useState<MapStyleId>('dark');
   const reveal = useReveal(`${state.origin?.join(',')}|${state.selected.join(',')}`);
@@ -73,11 +86,12 @@ export function App() {
   useLabel(state.destination, state.destinationLabel, l => dispatch({ type: 'setDestinationLabel', label: l }));
 
   const selectedVehicles = useMemo(() => state.selected.map(id => VEHICLE_BY_ID.get(id)!).filter(Boolean), [state.selected]);
-  const rings: RingSpec[] = useMemo(() => selectedVehicles.map(v => ({ id: v.id, name: v.name, color: CATEGORIES[v.category].color, rangeKm: Math.max(1, v.rangeKm * (0.15 + 0.85 * reveal)), label: `${v.name} · ${formatDistance(v.rangeKm, state.units)}` })), [selectedVehicles, state.units, reveal]);
+  const fullRings: RingSpec[] = useMemo(() => selectedVehicles.map(v => ({ id: v.id, name: v.name, color: CATEGORIES[v.category].color, rangeKm: v.rangeKm, label: `${v.name} · ${formatDistance(v.rangeKm, state.units)}` })), [selectedVehicles, state.units]);
+  const rings: RingSpec[] = useMemo(() => (reveal >= 1 ? fullRings : fullRings.map(r => ({ ...r, rangeKm: Math.max(1, r.rangeKm * (0.15 + 0.85 * reveal)) }))), [fullRings, reveal]);
   const longest = selectedVehicles.reduce<typeof selectedVehicles[number] | null>((m, v) => (!m || v.rangeKm > m.rangeKm ? v : m), null);
   const tripKm = state.mode === 'trip' && state.origin && state.destination ? haversineKm(state.origin, state.destination) : null;
 
-  const padding = useMemo(() => (isMobile ? { top: 140, left: 24, right: 24, bottom: window.innerHeight * 0.46 + 24 } : { top: 40, left: 440, right: 60, bottom: 40 }), [isMobile]);
+  const padding = useMemo(() => (isMobile ? { top: 140, left: 24, right: 24, bottom: Math.min(viewportH * 0.46 + 24, viewportH - 200) } : { top: 40, left: 440, right: 60, bottom: 40 }), [isMobile, viewportH]);
   const fit = useCallback(() => setFitRequest(n => n + 1), []);
 
   const onMapClick = useCallback((lngLat: LngLat) => {
@@ -91,11 +105,15 @@ export function App() {
   const setMany = (ids: string[], on: boolean) => dispatch({ type: 'setSelected', ids: on ? Array.from(new Set([...state.selected, ...ids])) : state.selected.filter(id => !ids.includes(id)) });
 
   const share = async () => {
+    const url = window.location.href;
     try {
-      const url = window.location.href;
-      if (navigator.share && isMobile) await navigator.share({ title: 'CompareRange', url });
-      else { await navigator.clipboard.writeText(url); setToast('Link copied — it captures the pin, vehicles and units.'); }
-    } catch { /* user cancelled */ }
+      if (isMobile && navigator.share) { await navigator.share({ title: 'CompareRange', url }); return; }
+      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(url); setToast('Link copied — it captures the pin, vehicles and units.'); return; }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return; // user dismissed the share sheet
+    }
+    // No clipboard API (e.g. plain-HTTP deploy): fall back to a selectable prompt.
+    window.prompt('Copy this link:', url);
   };
 
   const modeSeg = (
@@ -111,6 +129,7 @@ export function App() {
         origin={state.origin}
         destination={state.destination}
         rings={state.mode === 'trip' ? [] : rings}
+        fitRings={state.mode === 'trip' ? [] : fullRings}
         showTrip={state.mode === 'trip'}
         projection={state.projection}
         styleId={styleId}

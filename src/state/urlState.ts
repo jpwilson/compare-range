@@ -19,7 +19,9 @@ export interface UrlState {
 
 function parseLngLat(v: string | null): LngLat | null {
   if (!v) return null;
-  const [lat, lon] = v.split(',').map(Number);
+  const parts = v.split(',');
+  if (parts.length !== 2 || parts.some(x => x.trim() === '')) return null; // Number('') === 0 would mean Null Island
+  const [lat, lon] = parts.map(Number);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
   return [lon, lat];
 }

@@ -33,10 +33,10 @@ export function VehicleList(p: Props) {
 
   return (
     <div>
-      <div className="filters" role="tablist" aria-label="Filter vehicles">
-        <button className="chip" role="tab" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All</button>
-        <button className="chip" role="tab" aria-pressed={filter === 'selected'} onClick={() => setFilter('selected')}>Selected · {p.selected.size}</button>
-        {CATEGORY_LIST.map(c => <button key={c.id} className="chip" role="tab" aria-pressed={filter === c.id} onClick={() => setFilter(c.id)}><CategoryIcon id={c.id} size={15} />{c.short}</button>)}
+      <div className="filters" role="group" aria-label="Filter vehicles">
+        <button className="chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All</button>
+        <button className="chip" aria-pressed={filter === 'selected'} onClick={() => setFilter('selected')}>Selected · {p.selected.size}</button>
+        {CATEGORY_LIST.map(c => <button key={c.id} className="chip" aria-pressed={filter === c.id} onClick={() => setFilter(c.id)}><CategoryIcon id={c.id} size={15} />{c.short}</button>)}
       </div>
       {groups.length === 0 ? <div className="empty">Nothing selected yet — pick a few vehicles to draw their rings.</div> : null}
       {groups.map(({ cat, items }) => {

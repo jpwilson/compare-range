@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { DEFAULT_SELECTION, VEHICLE_BY_ID } from '../data/vehicles';
 import type { LngLat } from '../geo/geodesy';
 import { readUrlState, writeUrlState, type Mode, type Projection, type Units } from './urlState';
@@ -29,7 +29,8 @@ export type Action =
   | { type: 'setUnits'; units: Units }
   | { type: 'setMode'; mode: Mode }
   | { type: 'setProjection'; projection: Projection }
-  | { type: 'setView'; view: PanelView };
+  | { type: 'setView'; view: PanelView }
+  | { type: 'hydrate'; state: AppState };
 
 function reducer(s: AppState, a: Action): AppState {
   switch (a.type) {
@@ -44,12 +45,13 @@ function reducer(s: AppState, a: Action): AppState {
     case 'setMode': return { ...s, mode: a.mode };
     case 'setProjection': return { ...s, projection: a.projection };
     case 'setView': return { ...s, view: a.view };
+    case 'hydrate': return { ...a.state, view: s.view };
   }
 }
 
 function initial(): AppState {
   const u = readUrlState();
-  const selected = (u.selected ?? DEFAULT_SELECTION).filter(id => VEHICLE_BY_ID.has(id));
+  const selected = Array.from(new Set((u.selected ?? DEFAULT_SELECTION).filter(id => VEHICLE_BY_ID.has(id))));
   return {
     origin: u.origin ?? DEFAULT_ORIGIN,
     originLabel: '',
@@ -66,9 +68,17 @@ function initial(): AppState {
 export function useAppState() {
   const [state, dispatch] = useReducer(reducer, undefined, initial);
 
+  // A share link pasted into an already-open tab (or back/forward) re-hydrates the state.
+  useEffect(() => {
+    const on = () => { if (!writing.current) dispatch({ type: 'hydrate', state: initial() }); };
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  const writing = useRef(false);
+
   // Keep the URL shareable.
   useEffect(() => {
-    const t = setTimeout(() => writeUrlState({ origin: state.origin, destination: state.destination, selected: state.selected, units: state.units, mode: state.mode, projection: state.projection }), 150);
+    const t = setTimeout(() => { writing.current = true; writeUrlState({ origin: state.origin, destination: state.destination, selected: state.selected, units: state.units, mode: state.mode, projection: state.projection }); setTimeout(() => { writing.current = false; }, 0); }, 150);
     return () => clearTimeout(t);
   }, [state.origin, state.destination, state.selected, state.units, state.mode, state.projection]);
 

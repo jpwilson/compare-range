@@ -14,7 +14,7 @@ export function TripResults({ vehicles, distanceKm, units }: { vehicles: Vehicle
         <span>{others.map(u => formatDistance(distanceKm, u)).join(' · ')} · great-circle</span>
       </div>
       <div className="cat"><span className="cat__dot" style={{ background: CATEGORIES.ev.color, color: CATEGORIES.ev.color }} /><span className="cat__name">Makes it non-stop · {can.length}</span></div>
-      {can.length === 0 ? <div className="empty">None of the selected vehicles can do this in one go.</div> : null}
+      {vehicles.length === 0 ? <div className="empty">No vehicles selected — pick some under Range rings.</div> : can.length === 0 ? <div className="empty">None of the selected vehicles can do this in one go.</div> : null}
       {can.map(v => {
         const used = distanceKm / v.rangeKm;
         return (
@@ -38,7 +38,7 @@ export function TripResults({ vehicles, distanceKm, units }: { vehicles: Vehicle
             <span className="result__dot" style={{ background: CATEGORIES[v.category].color, color: CATEGORIES[v.category].color }} />
             <div className="result__text">
               <div className="result__name">{v.name}</div>
-              <div className="result__sub">{formatDistance(v.rangeKm, units)} range · {Math.round((v.rangeKm / distanceKm) * 100)}% of the way</div>
+              <div className="result__sub">{formatDistance(v.rangeKm, units)} range · {Math.min(99, Math.floor((v.rangeKm / distanceKm) * 100))}% of the way</div>
             </div>
             <div className="result__val">{stops} stop{stops === 1 ? '' : 's'}</div>
           </div>

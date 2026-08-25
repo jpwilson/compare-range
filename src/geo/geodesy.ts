@@ -111,6 +111,28 @@ function recenterLongitudes(ring: Ring): Ring {
   const shift = -360 * Math.round((min + max) / 2 / 360);
   return shift ? ring.map(([lon, lat]) => [lon + shift, lat] as LngLat) : ring;
 }
+/** Shift a ring by k·360° so its longitude midpoint lies in [lo, lo + 360). */
+function shiftLonInto(ring: Ring, lo: number): Ring {
+  let min = Infinity, max = -Infinity;
+  for (const [lon] of ring) { if (lon < min) min = lon; if (lon > max) max = lon; }
+  const shift = -360 * Math.floor(((min + max) / 2 - lo) / 360);
+  return shift ? ring.map(([lon, lat]) => [lon + shift, lat] as LngLat) : ring;
+}
+/**
+ * Re-cut an open, longitude-monotonic (increasing) walk around a pole so it starts exactly at `seamLon`
+ * (mod 360), inserting an interpolated vertex on the edge the seam crosses.
+ */
+function cutWalkAt(walked: Ring, seamLon: number): Ring {
+  const L0 = walked[0][0];
+  const s = seamLon + 360 * Math.ceil((L0 - seamLon) / 360); // first seam ≥ L0
+  let i = 0;
+  while (i + 1 < walked.length && walked[i + 1][0] <= s) i++;
+  const a = walked[i], b = i + 1 < walked.length ? walked[i + 1] : [L0 + 360, walked[0][1]] as LngLat;
+  const t = b[0] === a[0] ? 0 : (s - a[0]) / (b[0] - a[0]);
+  const v: LngLat = [s, a[1] + t * (b[1] - a[1])];
+  const tail = walked.slice(0, i + 1).map(([lon, lat]) => [lon + 360, lat] as LngLat);
+  return [v, ...walked.slice(i + 1), ...tail].filter((q, k, arr) => k === 0 || q[0] > arr[k - 1][0]);
+}
 function signedArea(ring: Ring): number {
   let s = 0;
   for (let i = 0; i < ring.length - 1; i++) s += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
@@ -127,7 +149,7 @@ function ensureWinding(ring: Ring, counterClockwise: boolean): Ring {
  * circles containing one pole (closed over the pole), and circles containing both poles / larger than
  * a hemisphere (expressed as the whole world minus the antipodal circle).
  */
-export function geodesicCircleRings(center: LngLat, radiusKm: number, steps = 180): Ring[] {
+export function geodesicCircleRings(center: LngLat, radiusKm: number, steps = 180, seamLon?: number): Ring[] {
   const halfCircumference = Math.PI * EARTH_RADIUS_KM;
   if (radiusKm <= 0) return [];
   if (radiusKm >= halfCircumference - 1) return [worldRing()];
@@ -139,11 +161,14 @@ export function geodesicCircleRings(center: LngLat, radiusKm: number, steps = 18
 
   if (hasNorth && hasSouth) {
     // Everything except the antipodal circle (which then contains neither pole).
-    const hole = recenterLongitudes(circleBoundary(antipode(center), halfCircumference - radiusKm, steps));
-    const holeCenterLon = (Math.min(...hole.map(p => p[0])) + Math.max(...hole.map(p => p[0]))) / 2;
-    const outer: Ring = [
-      [holeCenterLon - 180, -90], [holeCenterLon + 180, -90], [holeCenterLon + 180, 90], [holeCenterLon - 180, 90], [holeCenterLon - 180, -90],
-    ];
+    // The world box's seam is a meridian; put it a quarter turn from the centre so neither the antipodal hole
+    // (centred at centre+180°) nor any concentric hole a caller adds (centred at centre) can straddle it.
+    // Keep every coordinate within [-360, 360]: MapLibre's globe renderer mishandles geometry beyond that even
+    // though geojson-vt itself wraps up to ±540.
+    const seam = seamLon ?? normalizeLon(center[0] + 90);
+    const lo = seam > 0 ? seam - 360 : seam;
+    const hole = shiftLonInto(circleBoundary(antipode(center), halfCircumference - radiusKm, steps), lo);
+    const outer: Ring = [[lo, -90], [lo + 360, -90], [lo + 360, 90], [lo, 90], [lo, -90]];
     return [ensureWinding(outer, true), ensureWinding(hole, false)];
   }
 
@@ -161,9 +186,10 @@ export function geodesicCircleRings(center: LngLat, radiusKm: number, steps = 18
   let startIdx = 0;
   for (let i = 1; i < open.length; i++) if (open[i][0] < open[startIdx][0]) startIdx = i;
   const rotated = open.slice(startIdx).concat(open.slice(0, startIdx));
-  const walked = unwrapLongitudes(rotated);
+  let walked = unwrapLongitudes(rotated);
   // Ensure monotonic direction: if longitudes decrease overall, reverse to make them increase.
   if (walked[walked.length - 1][0] < walked[0][0]) walked.reverse();
+  if (seamLon !== undefined) walked = cutWalkAt(walked, seamLon);
   const first = walked[0];
   const closed: Ring = walked.concat([[first[0] + 360, first[1]], [first[0] + 360, poleLat], [first[0], poleLat], [first[0], first[1]]]);
   return [ensureWinding(recenterLongitudes(closed), true)];
@@ -199,12 +225,16 @@ export function geodesicCirclePolygon(center: LngLat, radiusKm: number, steps = 
  * inner circle is itself the "world minus antipode" shape (it then has its own hole).
  */
 export function geodesicAnnulus(center: LngLat, outerKm: number, innerKm: number, steps = 180): GeoJSON.Polygon | GeoJSON.MultiPolygon {
-  const outer = geodesicCircleRings(center, outerKm, steps);
+  // Cut both rings at the same seam (a quarter turn from the centre) so a hole never straddles the outer ring's
+  // seam: geojson-vt/earcut would otherwise fill the part of the hole that pokes outside the outer ring.
+  const seam = normalizeLon(center[0] + 90);
+  const outer = geodesicCircleRings(center, outerKm, steps, seam);
   if (innerKm <= 0) return { type: 'Polygon', coordinates: outer };
-  const inner = geodesicCircleRings(center, innerKm, steps);
+  const inner = geodesicCircleRings(center, innerKm, steps, seam);
+  const outerMinLon = Math.min(...outer[0].map(p => p[0]));
   if (inner.length === 1) {
-    // Hole must wind opposite to the outer ring.
-    const hole = ensureWinding(inner[0], false);
+    // Hole must wind opposite to the outer ring and sit in the same 360° window as it.
+    const hole = ensureWinding(shiftLonInto(inner[0], outerMinLon), false);
     return { type: 'Polygon', coordinates: [...outer, hole] };
   }
   // Inner is world-minus-antipode (outer ring = world, hole = antipodal circle). Then the annulus is
@@ -212,7 +242,7 @@ export function geodesicAnnulus(center: LngLat, outerKm: number, innerKm: number
   // outer (radius R1) = world minus hole H1; inner (radius R2 < R1) = world minus hole H2 (H2 ⊃ H1).
   // annulus = H2 minus H1.
   const h2 = ensureWinding(inner[1], true);
-  const h1 = outer.length === 2 ? ensureWinding(outer[1], false) : undefined;
+  const h1 = outer.length === 2 ? ensureWinding(shiftLonInto(outer[1], Math.min(...h2.map(p => p[0]))), false) : undefined;
   return { type: 'Polygon', coordinates: h1 ? [h2, h1] : [h2] };
 }
 

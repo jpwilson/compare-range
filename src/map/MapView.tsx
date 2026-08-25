@@ -18,6 +18,8 @@ export interface MapViewProps {
   origin: LngLat | null;
   destination: LngLat | null;
   rings: RingSpec[];
+  /** Unscaled rings (the reveal animation shrinks `rings`); used for fitting. */
+  fitRings: RingSpec[];
   showTrip: boolean;
   projection: Projection;
   styleId: MapStyleId;
@@ -58,12 +60,15 @@ function tintDarkStyle(map: MapLibreMap) {
   if (map.getLayer('waterway')) map.setPaintProperty('waterway', 'line-color', '#132345');
 }
 
-/** Zoom at which the whole globe (radius = 512·2^z / 2π px) fits inside the padded viewport. */
-function globeFitZoom(map: MapLibreMap, pad: PaddingOptions): number {
+/**
+ * Zoom at which the whole globe fits inside the padded viewport. MapLibre draws the globe with pixel radius
+ * 512·2^z / 2π / cos(centerLat), so the target radius is scaled by cos(centerLat).
+ */
+function globeFitZoom(map: MapLibreMap, pad: PaddingOptions, centerLat: number): number {
   const el = map.getContainer();
   const w = el.clientWidth - (pad.left ?? 0) - (pad.right ?? 0);
   const h = el.clientHeight - (pad.top ?? 0) - (pad.bottom ?? 0);
-  const radius = (Math.max(120, Math.min(w, h)) / 2) * 0.92;
+  const radius = (Math.max(120, Math.min(w, h)) / 2) * 0.92 * Math.max(0.2, Math.cos((centerLat * Math.PI) / 180));
   return Math.max(0, Math.log2((radius * 2 * Math.PI) / 512));
 }
 
@@ -90,6 +95,7 @@ export function MapView(p: MapViewProps) {
   const originMarker = useRef<Marker | null>(null);
   const destMarker = useRef<Marker | null>(null);
   const sweepMarker = useRef<Marker | null>(null);
+  const doneFit = useRef(0);
   const [styleReady, setStyleReady] = useState(0);
   const cb = useRef(p); cb.current = p;
   const styleIdRef = useRef(p.styleId);
@@ -112,10 +118,11 @@ export function MapView(p: MapViewProps) {
     map.on('click', (e: MapMouseEvent) => {
       const target = e.originalEvent.target as HTMLElement | null;
       if (target?.closest('.pin-wrap')) return;
-      cb.current.onMapClick([e.lngLat.lng, e.lngLat.lat]);
+      const l = e.lngLat.wrap();
+      cb.current.onMapClick([l.lng, l.lat]);
     });
     map.once('load', () => cb.current.onReady?.(map));
-    return () => { originMarker.current?.remove(); destMarker.current?.remove(); sweepMarker.current?.remove(); originMarker.current = null; destMarker.current = null; sweepMarker.current = null; map.remove(); mapRef.current = null; setStyleReady(0); };
+    return () => { originMarker.current?.remove(); destMarker.current?.remove(); sweepMarker.current?.remove(); originMarker.current = null; destMarker.current = null; sweepMarker.current = null; map.remove(); mapRef.current = null; doneFit.current = 0; setStyleReady(0); };
   }, []);
 
   // Style switch (re-adds layers + projection on style.load).
@@ -185,10 +192,12 @@ export function MapView(p: MapViewProps) {
   // Fit.
   useEffect(() => {
     const map = mapRef.current; if (!map || !styleReady || !p.fitRequest || !p.origin) return;
+    if (doneFit.current === p.fitRequest) return; // a style reload must not throw away the user's camera
+    doneFit.current = p.fitRequest;
     const extra = p.showTrip && p.destination ? [p.destination] : [];
-    const b = ringBounds(p.origin, p.showTrip ? [] : p.rings, extra);
+    const b = ringBounds(p.origin, p.showTrip ? [] : p.fitRings, extra);
     if (!b) {
-      map.flyTo({ center: p.origin, zoom: globeFitZoom(map, p.padding), padding: p.padding, duration: 900 });
+      map.flyTo({ center: p.origin, zoom: globeFitZoom(map, p.padding, p.origin[1]), padding: p.padding, duration: 900 });
     } else {
       const bounds: LngLatBoundsLike = b;
       map.fitBounds(bounds, { padding: p.padding, duration: 900, maxZoom: 12 });
