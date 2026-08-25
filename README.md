@@ -17,14 +17,15 @@ pnpm test          # geodesy unit tests
 pnpm build         # static site in dist/
 ```
 
-## Deploy (Hetzner or any box with Docker)
+## Deploy
+
+Production lives on Vercel (project `compare-range`, team `jpwilsons-projects`) and is mounted at **evlineup.org/compare-range/** through a rewrite in the `eeveecars` project's `vercel.json`. The build uses a relative asset base so it works both at the root and under that sub-path.
 
 ```bash
-./deploy/deploy.sh root@YOUR.SERVER.IP                # plain HTTP on port 80
-./deploy/deploy.sh root@YOUR.SERVER.IP comparerange.com  # automatic HTTPS via Caddy (point DNS first)
+vercel deploy --prod      # from this directory (Vercel CLI, logged in)
 ```
 
-The script rsyncs the source, builds the image on the box (`Dockerfile` → Caddy serving `dist/`), and starts it with `docker compose`.
+Pushing to `main` does not auto-deploy unless the Vercel project is connected to the GitHub repo. A `Dockerfile` (Caddy serving `dist/`) and `deploy/deploy.sh` are kept for self-hosting on any Docker box.
 
 ## Design
 
