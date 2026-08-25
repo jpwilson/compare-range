@@ -51,11 +51,11 @@ a { color: var(--accent); }
 .sheet-handle { display: none; }
 
 .wordmark { display: flex; align-items: center; gap: 10px; }
-.wordmark__text { font-family: var(--font-display); font-weight: 800; font-size: 21px; letter-spacing: -0.03em; line-height: 1; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.wordmark__text { font-family: var(--font-display); font-weight: 700; font-size: 19px; letter-spacing: -0.02em; line-height: 1; color: var(--text); }
 .wordmark__text b { font-weight: 800; }
 .badge { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--stroke); border-radius: 999px; padding: 4px 8px; display: inline-flex; align-items: center; gap: 6px; }
 .badge i { width: 6px; height: 6px; border-radius: 50%; background: #3ddc84; box-shadow: 0 0 10px #3ddc84; }
-.tagline { font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: -0.02em; line-height: 1.12; margin-top: -2px; }
+.tagline { font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: -0.02em; line-height: 1.12; margin-top: -2px; }
 .tagline em { font-style: normal; color: var(--muted); font-weight: 500; }
 
 .seg { position: relative; display: flex; gap: 2px; background: var(--chip); border: 1px solid var(--stroke); border-radius: 14px; padding: 4px; }
@@ -118,15 +118,16 @@ a { color: var(--accent); }
 .chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: transparent; }
 
 .foot__label { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-.foot__value { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+.foot__value { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; min-width: 0; }
+.foot__value > * { white-space: nowrap; }
+.foot__value > b { overflow: hidden; text-overflow: ellipsis; }
 .foot__value b { font-family: var(--font-display); font-size: 14px; font-weight: 700; white-space: nowrap; }
 .btn { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800; border-radius: 999px; padding: 11px 16px; white-space: nowrap; background: var(--text); color: var(--bg); box-shadow: 0 8px 24px rgba(255, 255, 255, 0.12); transition: transform 0.15s, box-shadow 0.2s; }
 .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(255, 255, 255, 0.18); }
-.btn--grad { background: var(--grad); color: #07090f; box-shadow: 0 8px 28px rgba(167, 139, 250, 0.35); }
 .btn--ghost { background: var(--chip); color: var(--text); border: 1px solid var(--stroke-strong); box-shadow: none; }
 
 .big-distance { display: flex; flex-direction: column; gap: 4px; margin: 6px 6px 12px; }
-.big-distance b { font-family: var(--font-display); font-weight: 800; font-size: 40px; letter-spacing: -0.03em; line-height: 1; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.big-distance b { font-family: var(--font-display); font-weight: 800; font-size: 40px; letter-spacing: -0.03em; line-height: 1; color: var(--text); }
 .big-distance span { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
 
 .result { display: flex; align-items: center; gap: 12px; padding: 10px 10px; border-radius: 16px; border: 1px solid var(--stroke); background: var(--chip); margin-bottom: 6px; }
@@ -146,6 +147,12 @@ a { color: var(--accent); }
 
 .empty { font-size: 13.5px; color: var(--muted); padding: 16px 8px; line-height: 1.5; }
 .note { font-size: 12px; color: var(--dim); line-height: 1.5; padding: 0 6px; }
+
+.starter { margin: 4px 6px 10px; padding: 14px; border-radius: 16px; border: 1px dashed var(--stroke-strong); }
+.starter p { margin: 0 0 10px; font-size: 13.5px; color: var(--muted); line-height: 1.45; }
+.starter__picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.starter__picks .chip { border-color: color-mix(in srgb, var(--c) 45%, transparent); color: var(--text); }
+.starter__picks .chip:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 
 /* ---------- map overlays ---------- */
 .toolbar { position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 6px; padding: 6px; background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--stroke); border-radius: 999px; box-shadow: var(--shadow-sm); z-index: 4; }

@@ -195,6 +195,11 @@ export function MapView(p: MapViewProps) {
     if (doneFit.current === p.fitRequest) return; // a style reload must not throw away the user's camera
     doneFit.current = p.fitRequest;
     const extra = p.showTrip && p.destination ? [p.destination] : [];
+    if (!p.showTrip && p.fitRings.length === 0) {
+      // Nothing to frame yet: a regional view around the pin, not a street-level zoom on it.
+      map.flyTo({ center: p.origin, zoom: Math.min(4, Math.max(map.getZoom(), 2.5)), padding: p.padding, duration: 700 });
+      return;
+    }
     const b = ringBounds(p.origin, p.showTrip ? [] : p.fitRings, extra);
     if (!b) {
       map.flyTo({ center: p.origin, zoom: globeFitZoom(map, p.padding, p.origin[1]), padding: p.padding, duration: 900 });

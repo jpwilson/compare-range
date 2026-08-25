@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from './data/categories';
-import { VEHICLES, VEHICLE_BY_ID } from './data/vehicles';
+import { QUICK_PICKS, VEHICLES, VEHICLE_BY_ID } from './data/vehicles';
 import { formatDistance, haversineKm, type LngLat } from './geo/geodesy';
 import { formatLngLat, reverseGeocode, type Place } from './geo/geocode';
 import { MapView, type MapStyleId } from './map/MapView';
 import type { RingSpec } from './map/rangeLayers';
 import { useAppState } from './state/useAppState';
 import type { Units } from './state/urlState';
-import { Arrow, Chevron, Fit, Globe, Layers, Logo, Minus, Plus, Share, Swap, X } from './ui/icons';
+import { Chevron, Fit, Globe, Layers, Logo, Minus, Plus, Share, Swap, X } from './ui/icons';
 import { PlaceSearch } from './ui/PlaceSearch';
 import { Ranking } from './ui/Ranking';
 import { TripResults } from './ui/TripResults';
@@ -102,7 +102,9 @@ export function App() {
 
   const pickOrigin = (pl: Place) => { dispatch({ type: 'setOrigin', lngLat: pl.lngLat, label: [pl.name, pl.detail].filter(Boolean).join(', ') }); setToast(null); fit(); };
   const pickDestination = (pl: Place) => { dispatch({ type: 'setDestination', lngLat: pl.lngLat, label: [pl.name, pl.detail].filter(Boolean).join(', ') }); fit(); };
-  const setMany = (ids: string[], on: boolean) => dispatch({ type: 'setSelected', ids: on ? Array.from(new Set([...state.selected, ...ids])) : state.selected.filter(id => !ids.includes(id)) });
+  const setMany = (ids: string[], on: boolean) => { dispatch({ type: 'setSelected', ids: on ? Array.from(new Set([...state.selected, ...ids])) : state.selected.filter(id => !ids.includes(id)) }); if (on) fit(); };
+  // Adding a vehicle re-frames the map around its ring; removing one leaves the camera alone.
+  const toggleAndFit = (id: string) => { const adding = !selectedSet.has(id); toggle(id); if (adding) { fit(); setToast(null); } };
 
   const share = async () => {
     const url = window.location.href;
@@ -165,10 +167,7 @@ export function App() {
       <aside className={`panel${sheetOpen ? ' is-expanded' : ''}`} aria-label="Controls">
         <button className="sheet-handle" onClick={() => setSheetOpen(o => !o)} aria-label={sheetOpen ? 'Collapse panel' : 'Expand panel'}><i /></button>
         <div className="panel__head">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div className="wordmark"><Logo size={26} /><span className="wordmark__text">CompareRange</span></div>
-            <span className="badge"><i />{VEHICLES.length} vehicles</span>
-          </div>
+          <div className="wordmark"><Logo size={24} /><span className="wordmark__text">CompareRange</span></div>
           <div className="tagline">How far can it go <em>from here?</em></div>
           {state.mode === 'rings' ? (
             <>
@@ -197,7 +196,19 @@ export function App() {
               </div>
               {state.view === 'rank'
                 ? <Ranking vehicles={selectedVehicles} units={state.units} />
-                : <VehicleList vehicles={VEHICLES} selected={selectedSet} units={state.units} onToggle={toggle} onSetMany={setMany} />}
+                : <>
+                  {selectedSet.size === 0 ? (
+                    <div className="starter">
+                      <p>Pick a vehicle and its range appears around the pin. Add more to compare them.</p>
+                      <div className="starter__picks">
+                        {QUICK_PICKS.map(id => VEHICLE_BY_ID.get(id)).filter(Boolean).map(v => (
+                          <button key={v!.id} className="chip" onClick={() => toggleAndFit(v!.id)} style={{ ['--c' as string]: CATEGORIES[v!.category].color }}>{v!.name}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <VehicleList vehicles={VEHICLES} selected={selectedSet} units={state.units} onToggle={toggleAndFit} onSetMany={setMany} />
+                </>}
             </>
           ) : tripKm !== null ? (
             <TripResults vehicles={selectedVehicles} distanceKm={tripKm} units={state.units} />
@@ -214,10 +225,10 @@ export function App() {
             ) : longest ? (
               <div className="foot__value"><b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{longest.name}</b><span className="mono" style={{ fontSize: 13, color: CATEGORIES[longest.category].color }}>{formatDistance(longest.rangeKm, state.units)}</span></div>
             ) : (
-              <div className="foot__value"><b>Nothing selected</b></div>
+              <div className="foot__value"><b>Nothing yet</b><span className="muted" style={{ fontSize: 12 }}>pick a vehicle above</span></div>
             )}
           </div>
-          <button className="btn btn--grad" onClick={share}><Share /> Share</button>
+          <button className="btn" onClick={share}><Share /> Share</button>
         </div>
       </aside>
 
@@ -226,9 +237,6 @@ export function App() {
           <span>{toast}</span>
           <button onClick={() => setToast(null)} aria-label="Dismiss"><X /></button>
         </div>
-      ) : null}
-      {selectedSet.size === 0 && state.mode === 'rings' ? (
-        <div className="welcome"><h3>Pick a vehicle</h3><p>Tick a few in the list and their range rings appear around your pin. <Arrow /></p></div>
       ) : null}
     </div>
   );

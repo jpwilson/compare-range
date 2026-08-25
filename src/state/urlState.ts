@@ -45,7 +45,7 @@ export function writeUrlState(s: UrlState): void {
   const q = new URLSearchParams();
   if (s.origin) q.set('o', fmt(s.origin));
   if (s.destination) q.set('d', fmt(s.destination));
-  if (s.selected) q.set('v', s.selected.join(','));
+  if (s.selected && s.selected.length) q.set('v', s.selected.join(','));
   if (s.units !== 'km') q.set('u', s.units);
   if (s.mode !== 'rings') q.set('m', s.mode);
   if (s.projection) q.set('p', s.projection);

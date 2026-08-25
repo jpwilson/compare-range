@@ -81,4 +81,7 @@ export const VEHICLES: Vehicle[] = [
 ];
 
 export const VEHICLE_BY_ID: ReadonlyMap<string, Vehicle> = new Map(VEHICLES.map(v => [v.id, v]));
-export const DEFAULT_SELECTION: string[] = VEHICLES.filter(v => v.featured).map(v => v.id);
+/** Nothing is selected on first visit — the map should be empty until the user picks something. */
+export const DEFAULT_SELECTION: string[] = [];
+/** One-tap starters shown in the empty state. */
+export const QUICK_PICKS: string[] = ['tesla-model-3-long-range', 'tesla-cybertruck', 'cirrus-sr22', 'airbus-a380'];
