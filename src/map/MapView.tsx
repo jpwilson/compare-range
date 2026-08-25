@@ -1,4 +1,7 @@
-import { Map as MapLibreMap, Marker, type GeoJSONSource, type LngLatBoundsLike, type MapMouseEvent, type PaddingOptions } from 'maplibre-gl';
+import { Map as MapLibreMap, Marker, setWorkerUrl, type GeoJSONSource, type LngLatBoundsLike, type MapMouseEvent, type PaddingOptions } from 'maplibre-gl';
+
+// Production builds ship the worker as a static file (see vite.config.ts); in dev Vite serves the package unbundled.
+if (import.meta.env.PROD) setWorkerUrl(`${import.meta.env.BASE_URL}maplibre/${__MAPLIBRE_VERSION__}/maplibre-gl-worker.mjs`);
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import type { LngLat } from '../geo/geodesy';
