@@ -25,6 +25,8 @@ function maplibreWorker(): Plugin {
 
 export default defineConfig({
   plugins: [react(), maplibreWorker()],
+  // Relative asset URLs so the same build works at / and under a sub-path (e.g. evlineup.org/compare-range/).
+  base: './',
   define: { __MAPLIBRE_VERSION__: JSON.stringify(maplibreVersion) },
   // In dev, serve maplibre-gl unbundled so its worker URL resolves against the real file.
   optimizeDeps: { exclude: ['maplibre-gl'] },
