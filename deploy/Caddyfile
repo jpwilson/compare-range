@@ -1,0 +1,16 @@
+# Set SITE_ADDRESS to your domain (e.g. comparerange.com) for automatic HTTPS,
+# or leave it as ":80" to serve plain HTTP on the box's IP.
+{$SITE_ADDRESS::80} {
+	root * /srv
+	encode zstd gzip
+	file_server
+	try_files {path} /index.html
+
+	@static path *.js *.css *.svg *.png *.woff2
+	header @static Cache-Control "public, max-age=31536000, immutable"
+	header /index.html Cache-Control "no-cache"
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

@@ -1,0 +1,18 @@
+services:
+  web:
+    build: .
+    image: compare-range:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      # e.g. SITE_ADDRESS=comparerange.com  (DNS A record must point at this box first)
+      - SITE_ADDRESS=${SITE_ADDRESS:-:80}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  caddy_data:
+  caddy_config:
