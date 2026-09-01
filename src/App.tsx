@@ -4,6 +4,7 @@ import { QUICK_PICKS, VEHICLES, VEHICLE_BY_ID } from './data/vehicles';
 import { formatDistance, haversineKm, type LngLat } from './geo/geodesy';
 import { formatLngLat, reverseGeocode, type Place } from './geo/geocode';
 import { MapView, type MapStyleId } from './map/MapView';
+import { estimateTrip, formatDuration } from './model/trip';
 import type { RingSpec } from './map/rangeLayers';
 import { useAppState } from './state/useAppState';
 import type { Units } from './state/urlState';
@@ -90,6 +91,10 @@ export function App() {
   const rings: RingSpec[] = useMemo(() => (reveal >= 1 ? fullRings : fullRings.map(r => ({ ...r, rangeKm: Math.max(1, r.rangeKm * (0.15 + 0.85 * reveal)) }))), [fullRings, reveal]);
   const longest = selectedVehicles.reduce<typeof selectedVehicles[number] | null>((m, v) => (!m || v.rangeKm > m.rangeKm ? v : m), null);
   const tripKm = state.mode === 'trip' && state.origin && state.destination ? haversineKm(state.origin, state.destination) : null;
+  const fastestTrip = useMemo(() => {
+    if (tripKm === null || selectedVehicles.length === 0) return null;
+    return selectedVehicles.map(v => ({ v, e: estimateTrip(v, tripKm) })).sort((a, b) => a.e.totalMin - b.e.totalMin)[0];
+  }, [tripKm, selectedVehicles]);
 
   const padding = useMemo(() => (isMobile ? { top: 140, left: 24, right: 24, bottom: Math.min(viewportH * 0.46 + 24, viewportH - 200) } : { top: 40, left: 440, right: 60, bottom: 40 }), [isMobile, viewportH]);
   const fit = useCallback(() => setFitRequest(n => n + 1), []);
@@ -219,9 +224,13 @@ export function App() {
 
         <div className="panel__foot">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="foot__label">{state.mode === 'trip' ? 'Comparing' : 'Longest range selected'}</div>
+            <div className="foot__label">{state.mode === 'trip' ? (fastestTrip ? 'Fastest door to door' : 'Comparing') : 'Longest range selected'}</div>
             {state.mode === 'trip' ? (
-              <div className="foot__value"><b>{selectedSet.size}</b><span className="muted" style={{ fontSize: 12 }}>vehicles · pick them under Range rings</span></div>
+              fastestTrip ? (
+                <div className="foot__value"><b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fastestTrip.v.name}</b><span className="mono" style={{ fontSize: 13, color: CATEGORIES[fastestTrip.v.category].color }}>{formatDuration(fastestTrip.e.totalMin)}</span></div>
+              ) : (
+                <div className="foot__value"><b>{selectedSet.size}</b><span className="muted" style={{ fontSize: 12 }}>vehicles · pick them under Range rings</span></div>
+              )
             ) : longest ? (
               <div className="foot__value"><b style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{longest.name}</b><span className="mono" style={{ fontSize: 13, color: CATEGORIES[longest.category].color }}>{formatDistance(longest.rangeKm, state.units)}</span></div>
             ) : (

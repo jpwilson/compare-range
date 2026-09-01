@@ -1,10 +1,11 @@
 import type { CategoryId } from '../data/categories';
-import { AirlinerIcon, CarIcon, EvIcon, HeliIcon, JetIcon, MotoIcon, PlaneIcon } from './icons';
+import { AirlinerIcon, CarIcon, EvIcon, HeliIcon, HybridIcon, JetIcon, MotoIcon, PlaneIcon } from './icons';
 
 export function CategoryIcon({ id, size = 18 }: { id: CategoryId; size?: number }) {
   switch (id) {
     case 'ev': return <EvIcon size={size} />;
     case 'car': return <CarIcon size={size} />;
+    case 'hybrid': return <HybridIcon size={size} />;
     case 'moto': return <MotoIcon size={size} />;
     case 'heli': return <HeliIcon size={size} />;
     case 'plane': return <PlaneIcon size={size} />;
