@@ -253,7 +253,11 @@ export function App() {
           onPointerDown={onSheetDown} onPointerMove={onSheetMove} onPointerUp={onSheetUp} onPointerCancel={onSheetUp}
         ><i /></button>
         <div className="panel__head">
-          <div className="wordmark"><Logo size={24} /><span className="wordmark__text">CompareRange</span></div>
+          <div className="brandrow">
+            <div className="wordmark"><Logo size={24} /><span className="wordmark__text">CompareRange</span></div>
+            <span style={{ flex: 1 }} />
+            {AUTH_ENABLED ? <AccountButton session={session} onSignIn={signIn} onSignOut={signOut} /> : null}
+          </div>
           <div className="tagline">How far can it go <em>from here?</em></div>
           {state.mode === 'rings' ? (
             <>
