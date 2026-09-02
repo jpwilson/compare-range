@@ -51,6 +51,7 @@ a { color: var(--accent); }
 .sheet-handle { display: none; }
 
 .brandrow { display: flex; align-items: center; }
+.sheet-grab { display: contents; }
 .wordmark { display: flex; align-items: center; gap: 10px; }
 .wordmark__text { font-family: var(--font-display); font-weight: 700; font-size: 19px; letter-spacing: -0.02em; line-height: 1; color: var(--text); }
 .wordmark__text b { font-weight: 800; }
@@ -235,13 +236,16 @@ a { color: var(--accent); }
 @media (max-width: 760px) {
   /* Bottom sheet with three snap points (peek / half / full), draggable by the handle. */
   .panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: var(--sheet-h); max-height: none; border-radius: 26px 26px 0 0; background: var(--glass-strong); transition: height 0.25s ease; padding-bottom: env(safe-area-inset-bottom); }
-  .panel.sheet--peek { height: 174px; }
+  .panel.sheet--peek { height: calc(178px + env(safe-area-inset-bottom)); }
   .panel.sheet--full { height: calc(100dvh - 74px); }
   .panel.is-dragging { transition: none; }
   .panel__head, .panel__foot { flex-shrink: 0; }
-  .sheet-handle { touch-action: none; }
-  .sheet-handle { display: flex; justify-content: center; padding: 10px 0 2px; width: 100%; }
-  .sheet-handle i { width: 42px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.2); }
+  /* The whole header block drags the sheet (controls excepted). */
+  .sheet-grab { display: block; flex-shrink: 0; touch-action: none; }
+  /* 16px inputs stop iOS Safari zooming the page when they get focus. */
+  .field input, .account__input, .frow input, .frow select { font-size: 16px; }
+  .sheet-handle { display: flex; justify-content: center; padding: 12px 0 6px; width: 100%; }
+  .sheet-handle i { width: 56px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.28); }
   .panel__head { padding: 4px 16px 10px; gap: 10px; }
   .panel__head .brandrow, .panel__head .tagline, .panel__head .hint, .panel__head .badge { display: none; }
   .panel__scroll { padding: 0 10px 12px; }

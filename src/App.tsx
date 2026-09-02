@@ -86,7 +86,7 @@ export function App() {
   // map-heavy sites (Airbnb, Google Maps) converge on.
   const [sheet, setSheet] = useState<'peek' | 'half' | 'full'>('half');
   const panelRef = useRef<HTMLElement | null>(null);
-  const sheetDrag = useRef<{ y0: number; h0: number; moved: boolean } | null>(null);
+  const sheetDrag = useRef<{ y0: number; h0: number; moved: boolean; fromHandle: boolean } | null>(null);
   const [styleId, setStyleId] = useState<MapStyleId>('dark');
   const reveal = useReveal(`${state.origin?.join(',')}|${state.selected.join(',')}`);
   const [fitRequest, setFitRequest] = useState(1);
@@ -139,7 +139,11 @@ export function App() {
   const sheetSnaps = useCallback(() => ({ peek: 174, half: viewportH * 0.46, full: viewportH - 74 }), [viewportH]);
   const onSheetDown = (e: React.PointerEvent) => {
     if (!isMobile || !panelRef.current) return;
-    sheetDrag.current = { y0: e.clientY, h0: panelRef.current.getBoundingClientRect().height, moved: false };
+    // The whole sheet header is a drag surface — but never steal touches from controls.
+    const t = e.target as HTMLElement;
+    const fromHandle = Boolean(t.closest('.sheet-handle'));
+    if (!fromHandle && t.closest('input, select, textarea, a, button')) return;
+    sheetDrag.current = { y0: e.clientY, h0: panelRef.current.getBoundingClientRect().height, moved: false, fromHandle };
     panelRef.current.classList.add('is-dragging');
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
@@ -157,7 +161,7 @@ export function App() {
     el.classList.remove('is-dragging');
     const h = el.getBoundingClientRect().height;
     el.style.height = '';
-    if (!d.moved) { setSheet(s => (s === 'peek' ? 'half' : s === 'half' ? 'full' : 'half')); return; }
+    if (!d.moved) { if (d.fromHandle) setSheet(s => (s === 'peek' ? 'half' : s === 'half' ? 'full' : 'half')); return; }
     const snaps = sheetSnaps();
     setSheet((['peek', 'half', 'full'] as const).reduce((a, b) => (Math.abs(snaps[b] - h) < Math.abs(snaps[a] - h) ? b : a)));
   };
@@ -248,10 +252,8 @@ export function App() {
       </div>
 
       <aside className={`panel sheet--${sheet}`} aria-label="Controls" ref={el => { panelRef.current = el; }}>
-        <button
-          className="sheet-handle" aria-label={sheet === 'full' ? 'Collapse panel' : 'Expand panel'}
-          onPointerDown={onSheetDown} onPointerMove={onSheetMove} onPointerUp={onSheetUp} onPointerCancel={onSheetUp}
-        ><i /></button>
+        <div className="sheet-grab" onPointerDown={onSheetDown} onPointerMove={onSheetMove} onPointerUp={onSheetUp} onPointerCancel={onSheetUp}>
+        <button className="sheet-handle" aria-label={sheet === 'full' ? 'Collapse panel' : 'Expand panel'}><i /></button>
         <div className="panel__head">
           <div className="brandrow">
             <div className="wordmark"><Logo size={24} /><span className="wordmark__text">CompareRange</span></div>
@@ -275,6 +277,7 @@ export function App() {
             </div>
           )}
           {modeSeg}
+        </div>
         </div>
 
         <div className="panel__scroll">
