@@ -8,10 +8,15 @@ import { Chevron } from './icons';
 
 interface Props {
   vehicles: Vehicle[];
+  /** The signed-in user's own vehicles — shown in their own pinned group, not inside categories. */
+  userVehicles: Vehicle[];
+  showYourGroup: boolean;
   selected: Set<string>;
   units: Units;
   onToggle: (id: string) => void;
   onSetMany: (ids: string[], on: boolean) => void;
+  onAdd: () => void;
+  onDeleteUser: (id: string) => void;
 }
 
 export function statusNote(v: Vehicle): string | null {
@@ -50,8 +55,8 @@ export function VehicleList(p: Props) {
   }, [p.vehicles, filter, p.selected]);
 
   const selectedVehicles = useMemo(
-    () => p.vehicles.filter(v => p.selected.has(v.id)).sort((a, b) => a.rangeKm - b.rangeKm),
-    [p.vehicles, p.selected],
+    () => [...p.vehicles, ...p.userVehicles].filter(v => p.selected.has(v.id)).sort((a, b) => a.rangeKm - b.rangeKm),
+    [p.vehicles, p.userVehicles, p.selected],
   );
 
   const toggleOpen = (id: CategoryId) => setOpen(prev => {
@@ -77,6 +82,21 @@ export function VehicleList(p: Props) {
             <button className="cat__toggle" onClick={() => p.onSetMany(selectedVehicles.map(v => v.id), false)}>Clear</button>
           </div>
           {selectedVehicles.map(v => <VehicleCard key={v.id} v={v} on units={p.units} onToggle={p.onToggle} />)}
+        </div>
+      ) : null}
+      {filter === 'all' && p.showYourGroup ? (
+        <div>
+          <div className="cat cat--pinned">
+            <span className="cat__name">Your vehicles{p.userVehicles.length ? ` · ${p.userVehicles.length}` : ''}</span>
+            <button className="cat__toggle" onClick={p.onAdd}>+ Add</button>
+          </div>
+          {p.userVehicles.length === 0 ? <div className="empty">Add your exact car, plane or helicopter and compare it like any other.</div> : null}
+          {p.userVehicles.map(v => (
+            <div key={v.id} className="urow">
+              <VehicleCard v={v} on={p.selected.has(v.id)} units={p.units} onToggle={p.onToggle} />
+              <button className="urow__del" onClick={() => p.onDeleteUser(v.id)} aria-label={`Delete ${v.name}`}>✕</button>
+            </div>
+          ))}
         </div>
       ) : null}
       {groups.length === 0 ? <div className="empty">Nothing selected yet — pick a few vehicles to draw their rings.</div> : null}

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { LngLat } from '../geo/geodesy';
 import type { Projection } from '../state/urlState';
 import { buildBands, buildOutlines, buildTrip, EMPTY, ringBounds, type RingSpec } from './rangeLayers';
+import { updateChargers } from './chargersLayer';
 
 export const MAP_STYLES = {
   dark: 'https://tiles.openfreemap.org/styles/dark',
@@ -24,6 +25,7 @@ export interface MapViewProps {
   projection: Projection;
   styleId: MapStyleId;
   picking: boolean;
+  showChargers: boolean;
   padding: PaddingOptions;
   /** Bump to ask the map to fit the current rings / trip. */
   fitRequest: number;
@@ -87,6 +89,10 @@ function addLayers(map: MapLibreMap) {
     layout: { 'symbol-placement': 'line', 'symbol-spacing': 700, 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-letter-spacing': 0.02, 'text-max-angle': 20, 'text-pitch-alignment': 'viewport', 'text-padding': 6 },
     paint: { 'text-color': ['get', 'color'], 'text-halo-color': BG, 'text-halo-width': 2, 'text-halo-blur': 0.6 },
   });
+  if (!map.getSource('cr-chargers')) map.addSource('cr-chargers', { type: 'geojson', data: EMPTY, cluster: true, clusterRadius: 42, clusterMaxZoom: 14 });
+  if (!map.getLayer('cr-chargers-cluster')) map.addLayer({ id: 'cr-chargers-cluster', type: 'circle', source: 'cr-chargers', filter: ['has', 'point_count'], paint: { 'circle-color': '#3ddc84', 'circle-opacity': 0.85, 'circle-radius': ['step', ['get', 'point_count'], 11, 25, 15, 100, 19], 'circle-stroke-color': BG, 'circle-stroke-width': 1.5 } });
+  if (!map.getLayer('cr-chargers-count')) map.addLayer({ id: 'cr-chargers-count', type: 'symbol', source: 'cr-chargers', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 11 }, paint: { 'text-color': BG } });
+  if (!map.getLayer('cr-chargers-dot')) map.addLayer({ id: 'cr-chargers-dot', type: 'circle', source: 'cr-chargers', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': '#3ddc84', 'circle-radius': 4.5, 'circle-stroke-color': BG, 'circle-stroke-width': 1.5 } });
 }
 
 export function MapView(p: MapViewProps) {
@@ -124,6 +130,17 @@ export function MapView(p: MapViewProps) {
     map.once('load', () => cb.current.onReady?.(map));
     return () => { originMarker.current?.remove(); destMarker.current?.remove(); sweepMarker.current?.remove(); originMarker.current = null; destMarker.current = null; sweepMarker.current = null; map.remove(); mapRef.current = null; doneFit.current = 0; setStyleReady(0); };
   }, []);
+
+  // Charging stations: refetch on toggle, style reload and (debounced) map moves.
+  useEffect(() => {
+    const map = mapRef.current; if (!map || !styleReady) return;
+    void updateChargers(map, p.showChargers);
+    if (!p.showChargers) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onMove = () => { clearTimeout(t); t = setTimeout(() => void updateChargers(map, cb.current.showChargers), 500); };
+    map.on('moveend', onMove);
+    return () => { clearTimeout(t); map.off('moveend', onMove); };
+  }, [p.showChargers, styleReady]);
 
   // Style switch (re-adds layers + projection on style.load).
   useEffect(() => {

@@ -50,5 +50,6 @@ export function writeUrlState(s: UrlState): void {
   if (s.mode !== 'rings') q.set('m', s.mode);
   if (s.projection) q.set('p', s.projection);
   const next = '#' + q.toString();
-  if (next !== window.location.hash) history.replaceState(null, '', next === '#' ? window.location.pathname : next);
+  // Keep the query string: the Supabase magic-link callback arrives as ?code=… and must survive our writes.
+  if (next !== window.location.hash) history.replaceState(null, '', next === '#' ? window.location.pathname + window.location.search : next);
 }

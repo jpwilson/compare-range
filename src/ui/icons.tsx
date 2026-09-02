@@ -17,6 +17,7 @@ export const Swap = ({ size = 16 }: P) => <svg {...base(size)}><path d="M4 7h11l
 export const Share = ({ size = 16 }: P) => <svg {...base(size)}><path d="M10 12V3M6.5 6.5 10 3l3.5 3.5" /><path d="M4 11v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" /></svg>;
 export const Layers = ({ size = 18 }: P) => <svg {...base(size)}><path d="m10 3 7.5 4L10 11 2.5 7z" /><path d="m2.5 10.5 7.5 4 7.5-4M2.5 14l7.5 4 7.5-4" /></svg>;
 export const Locate = ({ size = 18 }: P) => <svg {...base(size)}><circle cx="10" cy="10" r="5" /><path d="M10 2v3M10 15v3M2 10h3M15 10h3" /></svg>;
+export const Bolt = ({ size = 18 }: P) => <svg {...base(size)}><path d="M11 2 5 11h4l-1.5 7L15 8.5h-4z" /></svg>;
 export const Logo = ({ size = 30 }: P) => (
   <svg width={size} height={size} viewBox="0 0 30 30" fill="none" aria-hidden>
     <circle cx="15" cy="15" r="13" stroke="currentColor" strokeWidth="2" opacity="0.5" /><circle cx="15" cy="15" r="8.5" stroke="currentColor" strokeWidth="2" opacity="0.8" /><circle cx="15" cy="15" r="4" fill="currentColor" />

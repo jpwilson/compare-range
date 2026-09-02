@@ -51,7 +51,8 @@ function reducer(s: AppState, a: Action): AppState {
 
 function initial(): AppState {
   const u = readUrlState();
-  const selected = Array.from(new Set((u.selected ?? DEFAULT_SELECTION).filter(id => VEHICLE_BY_ID.has(id))));
+  // "u:" ids are the signed-in user's own vehicles — they load asynchronously, so keep them.
+  const selected = Array.from(new Set((u.selected ?? DEFAULT_SELECTION).filter(id => VEHICLE_BY_ID.has(id) || id.startsWith('u:'))));
   return {
     origin: u.origin ?? DEFAULT_ORIGIN,
     originLabel: '',

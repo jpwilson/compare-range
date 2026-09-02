@@ -5,10 +5,16 @@ import { formatDistance, haversineKm, type LngLat } from './geo/geodesy';
 import { formatLngLat, reverseGeocode, type Place } from './geo/geocode';
 import { MapView, type MapStyleId } from './map/MapView';
 import { estimateTrip, formatDuration } from './model/trip';
+import { AUTH_ENABLED } from './auth/supabase';
+import { useSession } from './auth/useSession';
+import { addUserVehicle, deleteUserVehicle, listUserVehicles, type UserVehicleInput } from './data/userVehicles';
+import type { Vehicle } from './data/types';
+import { AccountButton } from './ui/AccountButton';
+import { VehicleForm } from './ui/VehicleForm';
 import type { RingSpec } from './map/rangeLayers';
 import { useAppState } from './state/useAppState';
 import type { Units } from './state/urlState';
-import { Chevron, Fit, Globe, Layers, Logo, Minus, Plus, Share, Swap, X } from './ui/icons';
+import { Bolt, Chevron, Fit, Globe, Layers, Logo, Minus, Plus, Share, Swap, X } from './ui/icons';
 import { PlaceSearch } from './ui/PlaceSearch';
 import { Ranking } from './ui/Ranking';
 import { TripResults } from './ui/TripResults';
@@ -76,17 +82,38 @@ export function App() {
   const { state, dispatch, selectedSet, toggle } = useAppState();
   const isMobile = useIsMobile();
   const viewportH = useViewportHeight();
-  const [sheetOpen, setSheetOpen] = useState(false);
+  // Mobile bottom sheet: peek (map first), half (browse), full (deep list) — the pattern
+  // map-heavy sites (Airbnb, Google Maps) converge on.
+  const [sheet, setSheet] = useState<'peek' | 'half' | 'full'>('half');
+  const panelRef = useRef<HTMLElement | null>(null);
+  const sheetDrag = useRef<{ y0: number; h0: number; moved: boolean } | null>(null);
   const [styleId, setStyleId] = useState<MapStyleId>('dark');
   const reveal = useReveal(`${state.origin?.join(',')}|${state.selected.join(',')}`);
   const [fitRequest, setFitRequest] = useState(1);
   const [toast, setToast] = useState<string | null>('Click anywhere on the map to move the pin — or drag it.');
+  const [showChargers, setShowChargers] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const mapZoom = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(null);
+
+  const { session, signIn, signOut } = useSession();
+  const [userVehicles, setUserVehicles] = useState<Vehicle[]>([]);
+  useEffect(() => {
+    if (!session) { setUserVehicles([]); return; }
+    let cancelled = false;
+    listUserVehicles().then(v => { if (!cancelled) setUserVehicles(v); }).catch(() => { if (!cancelled) setToast('Couldn’t load your vehicles — is the database set up?'); });
+    return () => { cancelled = true; };
+  }, [session?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useLabel(state.origin, state.originLabel, l => dispatch({ type: 'setOriginLabel', label: l }));
   useLabel(state.destination, state.destinationLabel, l => dispatch({ type: 'setDestinationLabel', label: l }));
 
-  const selectedVehicles = useMemo(() => state.selected.map(id => VEHICLE_BY_ID.get(id)!).filter(Boolean), [state.selected]);
+  const vehicleById = useMemo(() => {
+    if (!userVehicles.length) return VEHICLE_BY_ID;
+    const m = new Map(VEHICLE_BY_ID);
+    for (const v of userVehicles) m.set(v.id, v);
+    return m;
+  }, [userVehicles]);
+  const selectedVehicles = useMemo(() => state.selected.map(id => vehicleById.get(id)!).filter(Boolean), [state.selected, vehicleById]);
   const fullRings: RingSpec[] = useMemo(() => selectedVehicles.map(v => ({ id: v.id, name: v.name, color: CATEGORIES[v.category].color, rangeKm: v.rangeKm, label: `${v.name} · ${formatDistance(v.rangeKm, state.units)}` })), [selectedVehicles, state.units]);
   const rings: RingSpec[] = useMemo(() => (reveal >= 1 ? fullRings : fullRings.map(r => ({ ...r, rangeKm: Math.max(1, r.rangeKm * (0.15 + 0.85 * reveal)) }))), [fullRings, reveal]);
   const longest = selectedVehicles.reduce<typeof selectedVehicles[number] | null>((m, v) => (!m || v.rangeKm > m.rangeKm ? v : m), null);
@@ -96,20 +123,68 @@ export function App() {
     return selectedVehicles.map(v => ({ v, e: estimateTrip(v, tripKm) })).sort((a, b) => a.e.totalMin - b.e.totalMin)[0];
   }, [tripKm, selectedVehicles]);
 
-  const padding = useMemo(() => (isMobile ? { top: 140, left: 24, right: 24, bottom: Math.min(viewportH * 0.46 + 24, viewportH - 200) } : { top: 40, left: 440, right: 60, bottom: 40 }), [isMobile, viewportH]);
+  const padding = useMemo(() => (isMobile
+    ? { top: 140, left: 24, right: 24, bottom: sheet === 'peek' ? 210 : Math.min(viewportH * 0.46 + 24, viewportH - 200) }
+    : { top: 40, left: 440, right: 60, bottom: 40 }), [isMobile, viewportH, sheet]);
   const fit = useCallback(() => setFitRequest(n => n + 1), []);
 
   const onMapClick = useCallback((lngLat: LngLat) => {
     setToast(null);
+    if (isMobile) setSheet('peek'); // touching the map means "show me the map"
     if (state.mode === 'trip') dispatch({ type: 'setDestination', lngLat });
     else dispatch({ type: 'setOrigin', lngLat });
-  }, [state.mode, dispatch]);
+  }, [state.mode, dispatch, isMobile]);
+
+  // Sheet drag: track the handle, snap to the nearest state on release; a plain tap steps upward.
+  const sheetSnaps = useCallback(() => ({ peek: 174, half: viewportH * 0.46, full: viewportH - 74 }), [viewportH]);
+  const onSheetDown = (e: React.PointerEvent) => {
+    if (!isMobile || !panelRef.current) return;
+    sheetDrag.current = { y0: e.clientY, h0: panelRef.current.getBoundingClientRect().height, moved: false };
+    panelRef.current.classList.add('is-dragging');
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onSheetMove = (e: React.PointerEvent) => {
+    const d = sheetDrag.current, el = panelRef.current;
+    if (!d || !el) return;
+    const dh = d.y0 - e.clientY;
+    if (Math.abs(dh) > 6) d.moved = true;
+    el.style.height = `${Math.min(viewportH - 74, Math.max(120, d.h0 + dh))}px`;
+  };
+  const onSheetUp = () => {
+    const d = sheetDrag.current, el = panelRef.current;
+    sheetDrag.current = null;
+    if (!d || !el) return;
+    el.classList.remove('is-dragging');
+    const h = el.getBoundingClientRect().height;
+    el.style.height = '';
+    if (!d.moved) { setSheet(s => (s === 'peek' ? 'half' : s === 'half' ? 'full' : 'half')); return; }
+    const snaps = sheetSnaps();
+    setSheet((['peek', 'half', 'full'] as const).reduce((a, b) => (Math.abs(snaps[b] - h) < Math.abs(snaps[a] - h) ? b : a)));
+  };
 
   const pickOrigin = (pl: Place) => { dispatch({ type: 'setOrigin', lngLat: pl.lngLat, label: [pl.name, pl.detail].filter(Boolean).join(', ') }); setToast(null); fit(); };
   const pickDestination = (pl: Place) => { dispatch({ type: 'setDestination', lngLat: pl.lngLat, label: [pl.name, pl.detail].filter(Boolean).join(', ') }); fit(); };
   const setMany = (ids: string[], on: boolean) => { dispatch({ type: 'setSelected', ids: on ? Array.from(new Set([...state.selected, ...ids])) : state.selected.filter(id => !ids.includes(id)) }); if (on) fit(); };
   // Adding a vehicle re-frames the map around its ring; removing one leaves the camera alone.
   const toggleAndFit = (id: string) => { const adding = !selectedSet.has(id); toggle(id); if (adding) { fit(); setToast(null); } };
+
+  const saveVehicle = async (input: UserVehicleInput) => {
+    const v = await addUserVehicle(input);
+    setUserVehicles(prev => [...prev, v]);
+    dispatch({ type: 'setSelected', ids: [...state.selected, v.id] });
+    fit();
+  };
+  const removeUserVehicle = (id: string) => {
+    setUserVehicles(prev => prev.filter(v => v.id !== id));
+    if (selectedSet.has(id)) dispatch({ type: 'setSelected', ids: state.selected.filter(x => x !== id) });
+    deleteUserVehicle(id).catch(() => setToast('Couldn’t delete that vehicle — try again.'));
+  };
+  const toggleChargers = () => {
+    setShowChargers(on => {
+      if (!on) setToast('Charging stations appear as you zoom in to city scale. Data © OpenStreetMap.');
+      return !on;
+    });
+  };
 
   const share = async () => {
     const url = window.location.href;
@@ -141,6 +216,7 @@ export function App() {
         projection={state.projection}
         styleId={styleId}
         picking={state.mode === 'trip' && !state.destination}
+        showChargers={showChargers}
         padding={padding}
         fitRequest={fitRequest}
         onMapClick={onMapClick}
@@ -152,6 +228,7 @@ export function App() {
       <div className="topbar">
         <span className="wordmark"><Logo size={22} /><span className="wordmark__text">Compare<b>Range</b></span></span>
         <span style={{ flex: 1 }} />
+        {AUTH_ENABLED ? <AccountButton session={session} onSignIn={signIn} onSignOut={signOut} /> : null}
         <button className="linkbtn" onClick={share} aria-label="Share link"><Share /></button>
       </div>
 
@@ -163,14 +240,18 @@ export function App() {
         <button className="rbtn" aria-pressed={state.projection === 'globe'} onClick={() => dispatch({ type: 'setProjection', projection: state.projection === 'globe' ? 'mercator' : 'globe' })} aria-label="Toggle globe" title={state.projection === 'globe' ? 'Switch to flat map' : 'Switch to globe'}><Globe /></button>
         <button className="rbtn" onClick={fit} aria-label="Fit rings in view" title="Fit everything in view"><Fit /></button>
         <button className="rbtn" aria-pressed={styleId === 'liberty'} onClick={() => setStyleId(s => (s === 'dark' ? 'liberty' : 'dark'))} aria-label="Toggle detailed basemap" title={styleId === 'dark' ? 'Detailed map' : 'Dark map'}><Layers /></button>
+        <button className="rbtn" aria-pressed={showChargers} onClick={toggleChargers} aria-label="Toggle charging stations" title="Charging stations (OpenStreetMap)"><Bolt /></button>
       </div>
       <div className="zoomstack">
         <button className="rbtn" onClick={() => mapZoom.current?.zoomIn()} aria-label="Zoom in"><Plus /></button>
         <button className="rbtn" onClick={() => mapZoom.current?.zoomOut()} aria-label="Zoom out"><Minus /></button>
       </div>
 
-      <aside className={`panel${sheetOpen ? ' is-expanded' : ''}`} aria-label="Controls">
-        <button className="sheet-handle" onClick={() => setSheetOpen(o => !o)} aria-label={sheetOpen ? 'Collapse panel' : 'Expand panel'}><i /></button>
+      <aside className={`panel sheet--${sheet}`} aria-label="Controls" ref={el => { panelRef.current = el; }}>
+        <button
+          className="sheet-handle" aria-label={sheet === 'full' ? 'Collapse panel' : 'Expand panel'}
+          onPointerDown={onSheetDown} onPointerMove={onSheetMove} onPointerUp={onSheetUp} onPointerCancel={onSheetUp}
+        ><i /></button>
         <div className="panel__head">
           <div className="wordmark"><Logo size={24} /><span className="wordmark__text">CompareRange</span></div>
           <div className="tagline">How far can it go <em>from here?</em></div>
@@ -196,7 +277,7 @@ export function App() {
           {state.mode === 'rings' ? (
             <>
               <div className="section-title">
-                <h2>{state.view === 'rank' ? 'Ranked by range' : 'Vehicles'} <span>· {selectedSet.size} of {VEHICLES.length}</span></h2>
+                <h2>{state.view === 'rank' ? 'Ranked by range' : 'Vehicles'} <span>· {selectedSet.size} of {VEHICLES.length + userVehicles.length}</span></h2>
                 <button className="linkbtn" onClick={() => dispatch({ type: 'setView', view: state.view === 'rank' ? 'list' : 'rank' })}>{state.view === 'rank' ? 'Back to list' : 'Rank'} <Chevron /></button>
               </div>
               {state.view === 'rank'
@@ -212,7 +293,11 @@ export function App() {
                       </div>
                     </div>
                   ) : null}
-                  <VehicleList vehicles={VEHICLES} selected={selectedSet} units={state.units} onToggle={toggleAndFit} onSetMany={setMany} />
+                  <VehicleList
+                    vehicles={VEHICLES} userVehicles={userVehicles} showYourGroup={AUTH_ENABLED && Boolean(session)}
+                    selected={selectedSet} units={state.units} onToggle={toggleAndFit} onSetMany={setMany}
+                    onAdd={() => setFormOpen(true)} onDeleteUser={removeUserVehicle}
+                  />
                 </>}
             </>
           ) : tripKm !== null ? (
@@ -247,6 +332,7 @@ export function App() {
           <button onClick={() => setToast(null)} aria-label="Dismiss"><X /></button>
         </div>
       ) : null}
+      {formOpen ? <VehicleForm onSave={saveVehicle} onClose={() => setFormOpen(false)} /> : null}
     </div>
   );
 }
