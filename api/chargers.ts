@@ -34,23 +34,27 @@ export default async function handler(req: Req, res: Res) {
   const query = `[out:json][timeout:10];node["amenity"="charging_station"](${s},${w},${s + 0.5},${w + 0.5});out 400;`;
 
   let data: { elements: OverpassNode[] } | null = null;
-  let lastErr = '';
+  const errors: string[] = [];
   for (const endpoint of ENDPOINTS) {
     try {
       const r = await fetch(endpoint, {
         method: 'POST',
         body: 'data=' + encodeURIComponent(query),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          // Overpass usage policy asks clients to identify themselves.
+          'User-Agent': 'CompareRange/1.0 (+https://evlineup.org/compare-range/)',
+        },
         signal: AbortSignal.timeout(12000),
       });
-      if (!r.ok) { lastErr = `Overpass ${r.status}`; continue; }
+      if (!r.ok) { errors.push(`${new URL(endpoint).host} ${r.status}`); continue; }
       data = (await r.json()) as { elements: OverpassNode[] };
       break;
     } catch (e) {
-      lastErr = (e as Error).message;
+      errors.push(`${new URL(endpoint).host} ${(e as Error).message}`);
     }
   }
-  if (!data) { res.status(502).json({ error: `Overpass unavailable: ${lastErr}` }); return; }
+  if (!data) { res.status(502).json({ error: `Overpass unavailable: ${errors.join('; ')}` }); return; }
 
   const features = data.elements
     .filter(el => Number.isFinite(el.lat) && Number.isFinite(el.lon))
