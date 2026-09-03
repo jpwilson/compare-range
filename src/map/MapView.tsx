@@ -74,6 +74,22 @@ function globeFitZoom(map: MapLibreMap, pad: PaddingOptions, centerLat: number):
   return Math.max(0, Math.log2((radius * 2 * Math.PI) / 512));
 }
 
+/**
+ * Web-Mercator fit zoom for a bounds box inside the padded viewport. Used only as a
+ * fallback: MapLibre's globe `cameraForBounds` throws on small (mobile) viewports,
+ * so we frame the box ourselves and easeTo an explicit center + zoom instead.
+ */
+function boundsFitZoom(map: MapLibreMap, [[w, s], [e, n]]: [[number, number], [number, number]], pad: PaddingOptions): number {
+  const el = map.getContainer();
+  const width = Math.max(40, el.clientWidth - (pad.left ?? 0) - (pad.right ?? 0));
+  const height = Math.max(40, el.clientHeight - (pad.top ?? 0) - (pad.bottom ?? 0));
+  const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (Math.max(-85, Math.min(85, lat)) * Math.PI) / 360));
+  const lngFrac = Math.max(1e-6, (e - w) / 360);
+  const latFrac = Math.max(1e-6, (mercY(n) - mercY(s)) / (2 * Math.PI));
+  const zoom = Math.min(Math.log2(width / (512 * lngFrac)), Math.log2(height / (512 * latFrac)));
+  return Number.isFinite(zoom) ? Math.max(0.5, Math.min(12, zoom)) : 3;
+}
+
 function addLayers(map: MapLibreMap) {
   const style = map.getStyle();
   const firstSymbol = style.layers.find(l => l.type === 'symbol')?.id;
@@ -220,9 +236,18 @@ export function MapView(p: MapViewProps) {
     const b = ringBounds(p.origin, p.showTrip ? [] : p.fitRings, extra);
     if (!b) {
       map.flyTo({ center: p.origin, zoom: globeFitZoom(map, p.padding, p.origin[1]), padding: p.padding, duration: 900 });
-    } else {
+      return;
+    }
+    try {
       const bounds: LngLatBoundsLike = b;
       map.fitBounds(bounds, { padding: p.padding, duration: 900, maxZoom: 12 });
+    } catch {
+      // MapLibre's globe cameraForBounds throws on small (mobile) viewports — frame it ourselves
+      // so a fit can never bubble an exception out of this effect and blank the whole app.
+      const [[w, s], [e, n]] = b;
+      const center: LngLat = [(w + e) / 2, (s + n) / 2];
+      try { map.easeTo({ center, zoom: boundsFitZoom(map, b, p.padding), padding: p.padding, duration: 700 }); }
+      catch { try { map.setCenter(center); } catch { /* never let the camera crash the app */ } }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.fitRequest, styleReady]);
