@@ -292,12 +292,10 @@ export function App() {
                 : <>
                   {selectedSet.size === 0 ? (
                     <div className="starter">
-                      <p>Pick a vehicle and its range appears around the pin. Add more to compare them.</p>
-                      <div className="starter__picks">
-                        {QUICK_PICKS.map(id => VEHICLE_BY_ID.get(id)).filter(Boolean).map(v => (
-                          <button key={v!.id} className="chip" onClick={() => toggleAndFit(v!.id)} style={{ ['--c' as string]: CATEGORIES[v!.category].color }}>{v!.name}</button>
-                        ))}
-                      </div>
+                      <span className="starter__label">Popular</span>
+                      {QUICK_PICKS.map(id => VEHICLE_BY_ID.get(id)).filter(Boolean).map(v => (
+                        <button key={v!.id} className="chip" onClick={() => toggleAndFit(v!.id)} style={{ ['--c' as string]: CATEGORIES[v!.category].color }}>{v!.name}</button>
+                      ))}
                     </div>
                   ) : null}
                   <VehicleList

@@ -195,11 +195,18 @@ a { color: var(--accent); }
 .empty { font-size: 13.5px; color: var(--muted); padding: 16px 8px; line-height: 1.5; }
 .note { font-size: 12px; color: var(--dim); line-height: 1.5; padding: 0 6px; }
 
-.starter { margin: 4px 6px 10px; padding: 14px; border-radius: 16px; border: 1px dashed var(--stroke-strong); }
-.starter p { margin: 0 0 10px; font-size: 13.5px; color: var(--muted); line-height: 1.45; }
-.starter__picks { display: flex; flex-wrap: wrap; gap: 6px; }
-.starter__picks .chip { border-color: color-mix(in srgb, var(--c) 45%, transparent); color: var(--text); }
-.starter__picks .chip:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
+/* Compact "tap to start" row — deliberately not a box, so it doesn't read as an editable favourites list. */
+.starter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 6px 4px; }
+.starter__label { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.starter .chip { border-color: color-mix(in srgb, var(--c) 45%, transparent); color: var(--text); }
+.starter .chip:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
+
+/* Vehicle search — the way you find things once the catalogue is large. */
+.vsearch { display: flex; align-items: center; gap: 8px; margin: 4px 6px 10px; padding: 0 10px; height: 40px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--stroke-strong); }
+.vsearch:focus-within { border-color: var(--accent); }
+.vsearch__icon { display: flex; color: var(--muted); }
+.vsearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px; font-weight: 600; height: 100%; }
+.vsearch input::placeholder { color: var(--dim); font-weight: 500; }
 
 /* ---------- map overlays ---------- */
 .toolbar { position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 6px; padding: 6px; background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--stroke); border-radius: 999px; box-shadow: var(--shadow-sm); z-index: 4; }
@@ -243,7 +250,7 @@ a { color: var(--accent); }
   /* The whole header block drags the sheet (controls excepted). */
   .sheet-grab { display: block; flex-shrink: 0; touch-action: none; }
   /* 16px inputs stop iOS Safari zooming the page when they get focus. */
-  .field input, .account__input, .frow input, .frow select { font-size: 16px; }
+  .field input, .account__input, .frow input, .frow select, .vsearch input { font-size: 16px; }
   .sheet-handle { display: flex; justify-content: center; padding: 12px 0 6px; width: 100%; }
   .sheet-handle i { width: 56px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.28); }
   .panel__head { padding: 4px 16px 10px; gap: 10px; }

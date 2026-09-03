@@ -4,7 +4,7 @@ import type { Vehicle } from '../data/types';
 import { formatDistance } from '../geo/geodesy';
 import type { Units } from '../state/urlState';
 import { CategoryIcon } from './CategoryIcon';
-import { Chevron } from './icons';
+import { Chevron, Search, X } from './icons';
 
 interface Props {
   vehicles: Vehicle[];
@@ -39,10 +39,26 @@ function VehicleCard({ v, on, units, onToggle }: { v: Vehicle; on: boolean; unit
   );
 }
 
+const MAX_RESULTS = 40;
+
 export function VehicleList(p: Props) {
   const [filter, setFilter] = useState<CategoryId | 'all' | 'selected'>('all');
   // Everything starts collapsed — the list is a catalogue, not a wall.
   const [open, setOpen] = useState<Set<CategoryId>>(new Set());
+  const [query, setQuery] = useState('');
+
+  // Search beats browsing once the catalogue is large: every word must match somewhere.
+  const q = query.trim().toLowerCase();
+  const matches = useMemo(() => {
+    if (!q) return [];
+    const terms = q.split(/\s+/);
+    return [...p.userVehicles, ...p.vehicles]
+      .filter(v => {
+        const hay = `${v.name} ${v.make} ${v.variant ?? ''} ${CATEGORIES[v.category].name}`.toLowerCase();
+        return terms.every(t => hay.includes(t));
+      })
+      .sort((a, b) => a.rangeKm - b.rangeKm);
+  }, [q, p.vehicles, p.userVehicles]);
 
   const groups = useMemo(() => {
     const by = new Map<CategoryId, Vehicle[]>();
@@ -68,8 +84,29 @@ export function VehicleList(p: Props) {
   // A filtered view is an explicit ask — show it expanded.
   const expandAll = filter !== 'all';
 
+  if (q) {
+    const shown = matches.slice(0, MAX_RESULTS);
+    return (
+      <div>
+        <div className="vsearch">
+          <span className="vsearch__icon"><Search size={16} /></span>
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search vehicles…" aria-label="Search vehicles" />
+          <button className="field__btn" onClick={() => setQuery('')} aria-label="Clear search"><X /></button>
+        </div>
+        <div className="cat cat--pinned"><span className="cat__name">{matches.length} match{matches.length === 1 ? '' : 'es'}</span></div>
+        {shown.map(v => <VehicleCard key={v.id} v={v} on={p.selected.has(v.id)} units={p.units} onToggle={p.onToggle} />)}
+        {matches.length === 0 ? <div className="empty">Nothing matched “{query.trim()}”. Try a make or model — or add your own vehicle.</div> : null}
+        {matches.length > shown.length ? <div className="empty">…and {matches.length - shown.length} more. Keep typing to narrow it down.</div> : null}
+      </div>
+    );
+  }
+
   return (
     <div>
+      <div className="vsearch">
+        <span className="vsearch__icon"><Search size={16} /></span>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search vehicles…" aria-label="Search vehicles" />
+      </div>
       <div className="filters" role="group" aria-label="Filter vehicles">
         <button className="chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All</button>
         <button className="chip" aria-pressed={filter === 'selected'} onClick={() => setFilter('selected')}>Selected · {p.selected.size}</button>
